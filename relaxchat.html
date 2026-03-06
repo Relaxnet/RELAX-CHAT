@@ -1,4 +1,1023 @@
-<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><link rel="stylesheet" href="fonts/Almarai.css"><title>خدمة العملاء 💫</title><style>body{@import url(fonts/Almarai.css);background:linear-gradient(135deg,#1f2937,#111827);color:#fff;font-family:Almarai;margin:0;padding:0;height:100vh;direction:rtl}.container{max-width:600px;margin:0 auto;height:100vh;display:flex;padding:10px}#name-screen{background:rgba(0,0,0,.5);border:2px solid #6366f1;border-radius:20px;padding:30px 20px;text-align:center;margin:50px auto;width:90%;max-width:400px}.Hi{background:purple;height:80px;width:80px;margin:0 auto 20px;border-radius:50%;display:flex;justify-content:center;align-items:center;font-size:50px}.Hi-text{font-size:24px;margin:10px 0}.Hi-text2{font-size:16px;margin:10px 0 20px;color:#ccc}#guest-name{width:80%;padding:12px 15px;margin:10px auto 20px;border:2px solid #6366f1;border-radius:10px;background:#1f2937;color:#fff;font-size:16px;display:block;font-family:Almarai,sans-serif}.btn-start{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:12px 30px;border-radius:10px;font-size:16px;cursor:pointer;width:60%;margin:10px auto;display:block;font-family:Almarai,sans-serif;border:1px solid #fff}#chat-screen{display:none;height:100%;flex-direction:column;background:rgba(0,0,0,.3);border-radius:15px;overflow:hidden}.header{background:linear-gradient(180deg,#15213b,#2a3d5a);padding:15px 20px;text-align:center;font-size:18px;border-bottom:1px solid #6366f1}#messages-container{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px;min-height:0;padding-bottom:80px}.message-wrapper{display:flex;width:100%;margin:5px 0}.message-wrapper.guest{justify-content:flex-end}.message-wrapper.system,.message-wrapper.admin{justify-content:flex-start}.message-bubble{max-width:75%;padding:12px 16px;border-radius:18px;position:relative;word-wrap:break-word}.guest .message-bubble{background:#6366f1;border-bottom-left-radius:5px}.system .message-bubble,.admin .message-bubble{background:#2d2d3a;border-bottom-right-radius:5px}.message-time{font-size:10px;opacity:.7;margin-top:4px;text-align:left}.input-area{background:linear-gradient(180deg,#15213b,#1f2a3a);padding:15px;border-top:2px solid #6366f1;display:flex;gap:10px;position:sticky;bottom:0}#message-input{flex:1;padding:12px 18px;border:1px solid #6366f1;border-radius:25px;background:rgba(255,255,255,.1);color:#fff;font-size:15px;outline:none;min-width:80px}.btn-send{background:#6366f1;color:#fff;border:none;border-radius:25px;padding:0 25px;font-size:16px;cursor:pointer;min-width:80px;font-family:Almarai,sans-serif}.error-popup{background:#dc2626;color:#fff;padding:12px 20px;border-radius:10px;position:fixed;top:20px;left:50%;transform:translateX(-50%);display:none;z-index:9999;text-align:center;min-width:200px}.error-popup.show{display:block}.loading{text-align:center;padding:20px}.loading-spinner{display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,.3);border-radius:50%;border-top-color:#fff;animation:spin 1s ease-in-out infinite}@keyframes spin{to{transform:rotate(360deg)}}</style><script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script></head><body><div class="container"><div id="errorPopup" class="error-popup"></div><div id="name-screen"><div class="Hi">👋</div><div class="Hi-text">مرحباً بك!</div><div class="Hi-text2">اكتب اسمك لبدء الدردشة فوراً</div><input type="text" id="guest-name" placeholder="ادخل اسمك للإستمرار .."><button class="btn-start" onclick="validateAndStart()">ابدأ الدردشة</button></div><div id="chat-screen"><div class="header" id="chat-header">مرحباً بك في خدمة عملاء شبكة ريلاكس</div><div id="messages-container"></div><div class="input-area"><input type="text" id="message-input" placeholder="اكتب رسالتك..." disabled><button class="btn-send" onclick="sendMessage()" id="sendBtn" disabled>إرسال</button></div></div></div><script>
-const firebaseConfig={apiKey:"AIzaSyAxoM2NXN8hOYFf4K7m7TxAnI8vZN1een0",authDomain:"relaxlive-56cdf.firebaseapp.com",projectId:"relaxlive-56cdf",storageBucket:"relaxlive-56cdf.firebasestorage.app",messagingSenderId:"502000959192",appId:"1:502000959192:web:f2116c2e4a293d0e2861ad"};
-firebase.initializeApp(firebaseConfig);const db=firebase.firestore();const PATH="networks/63FA05FB82D7";let guestId=null;let currentUser='';let unsubscribe=null;let lastMessageCount=0;let welcomeSent=false;const errorPopup=document.getElementById('errorPopup');const nameScreen=document.getElementById('name-screen');const chatScreen=document.getElementById('chat-screen');const messagesContainer=document.getElementById('messages-container');const messageInput=document.getElementById('message-input');const sendBtn=document.getElementById('sendBtn');function showError(message,isWarning){if(!errorPopup)return;errorPopup.style.background=isWarning?'#f59e0b':'#dc2626';errorPopup.innerHTML=message;errorPopup.className='error-popup show';setTimeout(()=>errorPopup.className='error-popup',3000);}function setInputEnabled(enabled){messageInput.disabled=!enabled;sendBtn.disabled=!enabled;}function formatTime(timestamp){if(!timestamp)return'';const date=timestamp.toDate?timestamp.toDate():new Date(timestamp);const hours=date.getHours();const minutes=date.getMinutes();const ampm=hours>=12?'م':'ص';let h=hours%12;h=h?h:12;const m=minutes<10?'0'+minutes:minutes;return h+':'+m+' '+ampm;}function validateAndStart(){const name=document.getElementById('guest-name').value.trim();if(name===''){showError('✖ من فضلك اكتب اسمك أولاً',true);return false;}if(name.length<2){showError('✖ الاسم يجب أن يكون حرفين على الأقل',true);return false;}startChat(name);}function sendWelcomeMessage(){if(welcomeSent)return;const hour=new Date().getHours();const greeting=(hour>=5&&hour<12)?'صباح الخير':'مساء الخير';const welcomeText=greeting+' يا '+currentUser+'، شكراً لتواصلك. سيتم الرد عليك في أقرب وقت ممكن من قبل فريق الدعم.';db.collection(PATH+"/conversations").doc(guestId).collection("messages").add({text:welcomeText,from:"admin",createdAt:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{welcomeSent=true;db.collection(PATH+"/conversations").doc(guestId).update({welcomeSent:true,lastText:welcomeText,lastMessageAt:firebase.firestore.FieldValue.serverTimestamp(),lastFrom:"admin"});displayMessage({from:"admin",text:welcomeText,createdAt:new Date().toISOString()});});}async function checkExistingConversation(name){const savedId=localStorage.getItem('guest_id');const savedName=localStorage.getItem('guest_name');if(savedId){guestId=savedId;try{const doc=await db.collection(PATH+"/conversations").doc(savedId).get();if(doc.exists){const data=doc.data();let firebaseName=data.name||data.fields?.name?.stringValue||null;if(firebaseName){currentUser=firebaseName;}else{currentUser=name;}if(firebaseName!==name){await doc.ref.update({name:name});localStorage.setItem('guest_name',name);currentUser=name;}welcomeSent=data.welcomeSent||false;openExistingChat();}else{createNewConversation(name);}}catch(e){createNewConversation(name);}return true;}return false;}function openExistingChat(){nameScreen.style.display='none';chatScreen.style.display='flex';document.getElementById('chat-header').innerHTML='مرحباً بك يا '+currentUser+' - في خدمة عملاء شبكة ريلاكس';loadMessages();setInputEnabled(true);}function createNewConversation(name){currentUser=name;guestId='g_'+Math.random().toString(36).substr(2,9)+'_'+Date.now();localStorage.setItem('guest_id',guestId);localStorage.setItem('guest_name',name);nameScreen.style.display='none';chatScreen.style.display='flex';document.getElementById('chat-header').innerHTML='مرحباً '+name+' - خدمة عملاء ريلاكس';db.collection(PATH+"/conversations").doc(guestId).set({name:name,startedAt:firebase.firestore.FieldValue.serverTimestamp(),lastMessageAt:firebase.firestore.FieldValue.serverTimestamp(),lastFrom:"guest",lastSeen:firebase.firestore.FieldValue.serverTimestamp(),welcomeSent:false}).then(()=>{setInputEnabled(true);loadMessages();}).catch(()=>{showError('خطأ في الاتصال، سيتم استخدام الوضع المحلي');setInputEnabled(true);loadMessages();});}function startChat(name){checkExistingConversation(name).then(exists=>{if(!exists)createNewConversation(name);});}function loadMessages(){if(guestId){if(unsubscribe)unsubscribe();unsubscribe=db.collection(PATH+"/conversations").doc(guestId).collection("messages").orderBy("createdAt","asc").onSnapshot(snapshot=>{messagesContainer.innerHTML='';let msgs=[];snapshot.forEach(doc=>{const msg=doc.data();msgs.push(msg);displayMessage(msg);if(msg.from==='admin'&&!welcomeSent)welcomeSent=true;});lastMessageCount=msgs.length;messagesContainer.scrollTop=messagesContainer.scrollHeight;snapshot.docChanges().forEach(change=>{if(change.type==='added'&&change.doc.data().from!=='guest'){try{new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwNAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAAD5QD///////////////////////////////////////////8AAAA8TEFNRTMuMTAwAQAAAAAAAAAAABQAJAUEQwAAgAAAA+Xl5eXlAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV').play();}catch(e){}}});});}}function displayMessage(msg){const sender=msg.from||'system';const text=msg.text||'';const timeStr=formatTime(msg.createdAt);const wrapper=document.createElement('div');wrapper.className='message-wrapper '+(sender==='guest'?'guest':'admin');const bubble=document.createElement('div');bubble.className='message-bubble';bubble.innerHTML=String(text).replace(/\n/g,'<br>');if(timeStr){const timeDiv=document.createElement('div');timeDiv.className='message-time';timeDiv.innerHTML=timeStr;bubble.appendChild(timeDiv);}wrapper.appendChild(bubble);messagesContainer.appendChild(wrapper);}function sendMessage(){const text=messageInput.value.trim();if(text===''){showError('✖ اكتب شيئاً للإرسال',true);return;}if(!guestId){showError('حدث خطأ، يرجى إعادة تحميل الصفحة');return;}setInputEnabled(false);db.collection(PATH+"/conversations").doc(guestId).collection("messages").add({text:text,from:"guest",createdAt:firebase.firestore.FieldValue.serverTimestamp()}).then(()=>{messageInput.value='';db.collection(PATH+"/conversations").doc(guestId).update({lastMessageAt:firebase.firestore.FieldValue.serverTimestamp(),lastFrom:"guest",lastSeen:firebase.firestore.FieldValue.serverTimestamp(),lastText:text});setInputEnabled(true);messageInput.focus();displayMessage({from:"guest",text:text,createdAt:new Date().toISOString()});lastMessageCount++;if(!welcomeSent)sendWelcomeMessage();}).catch(()=>{showError('فشل إرسال الرسالة، حاول مرة أخرى');setInputEnabled(true);});}function setupEnterKey(){messageInput.onkeypress=(e)=>{if(e.key==='Enter'){e.preventDefault();sendMessage();}};}window.onload=()=>{const savedName=localStorage.getItem('guest_name');const savedId=localStorage.getItem('guest_id');if(savedName&&savedId){startChat(savedName);}else{document.getElementById('guest-name').value=savedName||'';}setupEnterKey();};
-</script></body></html>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="stylesheet" href="fonts/Almarai.css">
+    <title>خدمة العملاء 💫</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1f2937, #111827);
+            color: #fff;
+            font-family: 'Almarai', sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            direction: rtl;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            height: 100vh;
+            display: flex;
+            padding: 10px;
+        }
+        #name-screen {
+            background: rgba(0,0,0,.5);
+            border: 2px solid #6366f1;
+            border-radius: 20px;
+            padding: 30px 20px;
+            text-align: center;
+            margin: 50px auto;
+            width: 90%;
+            max-width: 400px;
+        }
+        .Hi {
+            background: purple;
+            height: 80px;
+            width: 80px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 50px;
+        }
+        .Hi-text {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+        .Hi-text2 {
+            font-size: 16px;
+            margin: 10px 0 20px;
+            color: #ccc;
+        }
+        #guest-name {
+            width: 80%;
+            padding: 12px 15px;
+            margin: 10px auto 20px;
+            border: 2px solid #6366f1;
+            border-radius: 10px;
+            background: #1f2937;
+            color: #fff;
+            font-size: 16px;
+            display: block;
+            font-family: 'Almarai', sans-serif;
+        }
+        .btn-start {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 60%;
+            margin: 10px auto;
+            display: block;
+            font-family: 'Almarai', sans-serif;
+            border: 1px solid #fff;
+        }
+        #chat-screen {
+            display: none;
+            height: 100%;
+            flex-direction: column;
+            background: rgba(0,0,0,.5);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .profile-bar {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            background: rgba(0,0,0,0.4);
+            border-bottom: 1px solid #6366f1;
+            backdrop-filter: blur(5px);
+        }
+        .profile-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-left: 12px;
+            border: 2px solid #6366f1;
+        }
+        .profile-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .profile-name {
+            font-size: 15px;
+            font-weight: bold;
+            color: #fff;
+            line-height: 1.4;
+        }
+        .profile-status {
+            font-size: 11px;
+            color: #a0aec0;
+            line-height: 1.4;
+        }
+        .header {
+            background: linear-gradient(180deg, #15213b, #2a3d5a);
+            padding: 5px 20px;
+            text-align: center;
+            font-size: 12px;
+            border-bottom: 1px solid #6366f1;border-radius: 10px 10px;
+        }
+        #messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 0;
+            padding-bottom: 80px;
+            position: relative;
+        }
+        .message-wrapper {
+            display: flex;
+            width: 100%;
+            margin: 5px 0;
+            transition: transform 0.1s ease;
+        }
+        .message-wrapper.guest {
+            justify-content: flex-end;
+        }
+        .message-wrapper.system,
+        .message-wrapper.admin {
+            justify-content: flex-start;
+        }
+        .message-bubble {
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+            word-wrap: break-word;font-size:12px
+        }
+        .guest .message-bubble {
+            background: #6366f1;
+            border-bottom-left-radius: 5px;
+        }
+        .admin .message-bubble {
+            background: #2d2d3a;
+            border-bottom-right-radius: 5px;
+        }
+        .message-time {
+            font-size: 10px;
+            opacity: .7;
+            margin-top: 4px;
+            text-align: left;
+        }
+        .message-image {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 10px;
+            margin-bottom: 5px;
+            cursor: pointer;
+        }
+        .input-area {
+            background: linear-gradient(180deg, #15213b, #1f2a3a);
+            padding: 15px;
+            border-top: 2px solid #6366f1;
+            display: flex;
+            gap: 10px;
+            position: sticky;
+            bottom: 20px;
+            align-items: center;
+        }
+        #message-input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 1px solid #6366f1;
+            border-radius: 25px;
+            background: rgba(255,255,255,.1);
+            color: #fff;
+            font-size: 15px;
+            outline: none;
+            min-width: 80px;
+        }
+        .btn-send {
+            background: #6366f1;
+            color: #fff;
+            border: none;
+            border-radius: 25px;
+            padding: 0 25px;
+            font-size: 16px;
+            cursor: pointer;
+            min-width: 80px;
+            height: 45px;
+            font-family: 'Almarai', sans-serif;
+        }
+        .btn-attach {
+            background: transparent;
+            color: #fff;
+            border: 1px solid #6366f1;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .error-popup {
+            background: #dc2626;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 10px;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            z-index: 9999;
+            text-align: center;
+            min-width: 200px;
+        }
+        .error-popup.show {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .swipe-hint {
+            text-align: center;
+            color: #a5b4fc;
+            font-size: 12px;
+            margin: 5px 0 0;
+            padding: 4px 8px;
+            background: transparent;
+            border: none;
+            opacity: 0.8;
+            animation: fadeIn 0.5s;
+            width: fit-content;
+            align-self: center;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 0.8; transform: translateY(0); }
+        }
+        .message-wrapper.swiping {
+            transform: translateX(70px);
+            opacity: 0.8;
+        }
+        .read-status {
+            font-size: 12px;
+            margin-right: 5px;
+        }
+        .read-status.sent { color: rgba(255,255,255,0.6); }
+        .read-status.delivered { color: #4ade80; } /* أخضر فاتح */
+        .read-status.read { color: #3b82f6; } /* أزرق */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            padding-top: 60px;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.9);
+        }
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90%;
+        }
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div id="errorPopup" class="error-popup"></div>
+        <div id="name-screen">
+            <div class="Hi">👋</div>
+            <div class="Hi-text">مرحباً بك!</div>
+            <div class="Hi-text2">اكتب اسمك لبدء الدردشة فوراً</div>
+            <input type="text" id="guest-name" placeholder="ادخل اسمك للإستمرار ..">
+            <button class="btn-start" onclick="validateAndStart()">ابدأ الدردشة</button>
+        </div>
+        <div id="chat-screen">
+            <div class="profile-bar">
+                <img src="me.jpg" alt="Admin" class="profile-img" onerror="this.src='https://via.placeholder.com/40?text=Admin'">
+                <div class="profile-info">
+                    <span class="profile-name">م/محمد راجح</span>
+                    <span class="profile-status" id="admin-status">جاري التحميل...</span>
+                </div>
+            </div>
+            <div class="header" id="chat-header">مرحباً بك في خدمة عملاء شبكة ريلاكس</div>
+            <div id="messages-container"></div>
+            <div class="input-area">
+                <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                <button class="btn-attach" onclick="document.getElementById('imageUpload').click()">📷</button>
+                <input type="text" id="message-input" placeholder="اكتب رسالتك..." disabled>
+                <button class="btn-send" onclick="sendMessage()" id="sendBtn" disabled>إرسال</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for image preview -->
+    <div id="imageModal" class="modal">
+        <span class="close" onclick="document.getElementById('imageModal').style.display='none'">&times;</span>
+        <img class="modal-content" id="modalImage">
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAxoM2NXN8hOYFf4K7m7TxAnI8vZN1een0",
+            authDomain: "relaxlive-56cdf.firebaseapp.com",
+            projectId: "relaxlive-56cdf",
+            storageBucket: "relaxlive-56cdf.firebasestorage.app",
+            messagingSenderId: "502000959192",
+            appId: "1:502000959192:web:f2116c2e4a293d0e2861ad"
+        };
+
+        if (typeof firebase === 'undefined') {
+            showError("فشل تحميل مكتبات Firebase. تحقق من اتصالك بالإنترنت.");
+        } else {
+            try {
+                firebase.initializeApp(firebaseConfig);
+            } catch (e) {
+                console.error("Firebase initialization error:", e);
+                showError("خطأ في تهيئة Firebase");
+            }
+        }
+
+        let db;
+        try {
+            db = firebase.firestore();
+        } catch (e) {
+            console.error("Firestore error:", e);
+            showError("فشل تحميل قاعدة البيانات");
+        }
+
+        const PATH = "networks/63FA05FB82D7";
+
+        let guestId = null;
+        let currentUser = '';
+        let unsubscribe = null;
+        let unsubscribeAdmin = null;
+        let welcomeSent = false;
+        let adminStatusInterval = null;
+
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let currentSwipeElement = null;
+        let currentMessageId = null;
+        let isSwiping = false;
+
+        const errorPopup = document.getElementById('errorPopup');
+        const nameScreen = document.getElementById('name-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const messagesContainer = document.getElementById('messages-container');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('sendBtn');
+        const adminStatusEl = document.getElementById('admin-status');
+        const imageUpload = document.getElementById('imageUpload');
+
+        function showError(message, isWarning = false) {
+            if (!errorPopup) return;
+            errorPopup.style.background = isWarning ? '#f59e0b' : '#dc2626';
+            errorPopup.innerHTML = message;
+            errorPopup.className = 'error-popup show';
+            setTimeout(() => errorPopup.className = 'error-popup', 3000);
+        }
+
+        function setInputEnabled(enabled) {
+            messageInput.disabled = !enabled;
+            sendBtn.disabled = !enabled;
+        }
+
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatRelativeTime(timestamp) {
+            const now = Date.now();
+            const diff = now - timestamp.getTime();
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+
+            if (minutes < 1) return 'الآن';
+            if (minutes < 60) return `منذ ${minutes} دقيقة`;
+            if (hours < 24) return `منذ ${hours} ساعة`;
+            return `منذ ${days} يوم`;
+        }
+
+        function listenToAdminStatus() {
+            if (!db) return;
+            if (unsubscribeAdmin) unsubscribeAdmin();
+
+            const statusRef = db.collection(PATH + "/admin_status").doc('admin');
+            unsubscribeAdmin = statusRef.onSnapshot(doc => {
+                if (!adminStatusEl) return;
+                if (doc.exists) {
+                    const data = doc.data();
+                    const online = data.online === true;
+                    const lastSeen = data.lastSeen ? data.lastSeen.toDate() : null;
+
+                    if (online) {
+                        adminStatusEl.textContent = '🟢 متصل';
+                        if (adminStatusInterval) {
+                            clearInterval(adminStatusInterval);
+                            adminStatusInterval = null;
+                        }
+                    } else if (lastSeen) {
+                        adminStatusEl.textContent = `🔴 آخر ظهور: ${formatRelativeTime(lastSeen)}`;
+                        if (adminStatusInterval) clearInterval(adminStatusInterval);
+                        adminStatusInterval = setInterval(() => {
+                            if (adminStatusEl) {
+                                adminStatusEl.textContent = `🔴 آخر ظهور: ${formatRelativeTime(lastSeen)}`;
+                            }
+                        }, 60000);
+                    } else {
+                        adminStatusEl.textContent = '⚫ غير معروف';
+                    }
+                } else {
+                    adminStatusEl.textContent = '⚫ غير معروف';
+                }
+            }, error => {
+                console.error('Admin status error:', error);
+                adminStatusEl.textContent = '⚫ خطأ في التحميل';
+            });
+        }
+
+        function cleanupAdminStatus() {
+            if (unsubscribeAdmin) {
+                unsubscribeAdmin();
+                unsubscribeAdmin = null;
+            }
+            if (adminStatusInterval) {
+                clearInterval(adminStatusInterval);
+                adminStatusInterval = null;
+            }
+        }
+
+        function validateAndStart() {
+            const name = document.getElementById('guest-name').value.trim();
+            if (name === '') {
+                showError('✖ من فضلك اكتب اسمك أولاً', true);
+                return false;
+            }
+            if (name.length < 2) {
+                showError('✖ الاسم يجب أن يكون حرفين على الأقل', true);
+                return false;
+            }
+            startChat(name);
+        }
+
+        function sendWelcomeMessage() {
+            if (welcomeSent || !guestId || !db) return;
+            const hour = new Date().getHours();
+            const greeting = (hour >= 5 && hour < 12) ? 'صباح الخير' : 'مساء الخير';
+            const welcomeText = greeting + ' يا ' + currentUser + '، شكراً لتواصلك. سيتم الرد عليك في أقرب وقت ممكن 😊';
+
+            db.collection(PATH + "/conversations").doc(guestId).collection("messages").add({
+                text: welcomeText,
+                from: "admin",
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                read: false,
+                type: 'text'
+            }).then(() => {
+                welcomeSent = true;
+                db.collection(PATH + "/conversations").doc(guestId).update({
+                    welcomeSent: true,
+                    lastText: welcomeText,
+                    lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastFrom: "admin"
+                }).catch(e => console.warn("update welcomeSent failed", e));
+            }).catch(e => console.warn("فشل إرسال رسالة الترحيب", e));
+        }
+
+        async function checkExistingConversation(name) {
+            const savedId = localStorage.getItem('guest_id');
+            const savedName = localStorage.getItem('guest_name');
+
+            if (!savedId) return false;
+
+            guestId = savedId;
+            try {
+                if (!db) return false;
+
+                const docRef = db.collection(PATH + "/conversations").doc(savedId);
+                const doc = await docRef.get();
+
+                if (doc.exists) {
+                    const data = doc.data();
+
+                    let firebaseName = null;
+                    if (data.name && typeof data.name === 'string') {
+                        firebaseName = data.name;
+                    } else if (data.fields && data.fields.name) {
+                        const nameField = data.fields.name;
+                        if (nameField.stringValue) {
+                            firebaseName = nameField.stringValue;
+                        } else if (typeof nameField === 'string') {
+                            firebaseName = nameField;
+                        }
+                    }
+
+                    if (firebaseName) {
+                        currentUser = firebaseName;
+                    } else {
+                        currentUser = name;
+                    }
+
+                    if (firebaseName && firebaseName !== name) {
+                        await docRef.update({ name: name });
+                        localStorage.setItem('guest_name', name);
+                        currentUser = name;
+                    }
+
+                    welcomeSent = data.welcomeSent || false;
+                    openExistingChat();
+                    return true;
+                } else {
+                    return false;
+                }
+            } catch (error) {
+                console.error("خطأ في checkExistingConversation:", error);
+                showError("حدث خطأ في الاتصال، سيتم إنشاء محادثة جديدة");
+                return false;
+            }
+        }
+
+        function openExistingChat() {
+            nameScreen.style.display = 'none';
+            chatScreen.style.display = 'flex';
+            document.getElementById('chat-header').innerHTML = 'مرحباً بك يا ' + currentUser + ' - في خدمة عملاء شبكة ريلاكس';
+            loadMessages();
+            setInputEnabled(true);
+            listenToAdminStatus();
+        }
+
+        function createNewConversation(name) {
+            currentUser = name;
+            guestId = 'g_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+            localStorage.setItem('guest_id', guestId);
+            localStorage.setItem('guest_name', name);
+
+            nameScreen.style.display = 'none';
+            chatScreen.style.display = 'flex';
+            document.getElementById('chat-header').innerHTML = 'مرحباً بك يا' + name + ' في خدمة عملاء شبكة ريلاكس 😇';
+
+            if (!db) {
+                setInputEnabled(true);
+                loadMessages();
+                listenToAdminStatus();
+                return;
+            }
+
+            db.collection(PATH + "/conversations").doc(guestId).set({
+                name: name,
+                startedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+                lastFrom: "guest",
+                lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+                welcomeSent: false,
+                blocked: false
+            }).then(() => {
+                setInputEnabled(true);
+                loadMessages();
+                listenToAdminStatus();
+            }).catch((error) => {
+                console.error("فشل إنشاء المحادثة في Firestore:", error);
+                showError('خطأ في الاتصال، لكن يمكنك الدردشة محلياً');
+                setInputEnabled(true);
+                loadMessages();
+                listenToAdminStatus();
+            });
+        }
+
+        function startChat(name) {
+            if (!db) {
+                showError("قاعدة البيانات غير متوفرة، لكن يمكنك المتابعة محلياً");
+                createNewConversation(name);
+                return;
+            }
+
+            checkExistingConversation(name)
+                .then(exists => {
+                    if (!exists) {
+                        createNewConversation(name);
+                    }
+                })
+                .catch(error => {
+                    console.error("خطأ غير متوقع في startChat:", error);
+                    showError("حدث خطأ، سيتم إنشاء محادثة جديدة");
+                    createNewConversation(name);
+                });
+        }
+
+        function editMessage(messageId, oldText, timestampStr) {
+            if (timestampStr) {
+                const messageTime = new Date(timestampStr).getTime();
+                const now = Date.now();
+                const diffMinutes = (now - messageTime) / (1000 * 60);
+                if (diffMinutes > 20) {
+                    showError("لا يمكن تعديل الرسالة بعد مرور 20 دقيقة");
+                    return;
+                }
+            }
+
+            const newText = prompt("تعديل الرسالة:", oldText);
+            if (newText && newText.trim() !== "" && newText !== oldText) {
+                db.collection(PATH + "/conversations").doc(guestId)
+                    .collection("messages").doc(messageId)
+                    .update({ text: newText.trim() })
+                    .catch(error => {
+                        console.error("Error updating message:", error);
+                        showError("فشل تعديل الرسالة");
+                    });
+            }
+        }
+
+        function setupSwipeToEdit(element, messageId, sender, text, timestampStr) {
+            if (sender !== 'guest') return;
+
+            element.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+                currentSwipeElement = element;
+                currentMessageId = messageId;
+                isSwiping = false;
+            }, { passive: true });
+
+            element.addEventListener('touchmove', (e) => {
+                if (!currentSwipeElement) return;
+                const touch = e.touches[0];
+                const deltaX = touch.clientX - touchStartX;
+                const deltaY = Math.abs(touch.clientY - touchStartY);
+
+                if (Math.abs(deltaX) > 20 && deltaY < 30) {
+                    e.preventDefault();
+                    if (deltaX > 0) {
+                        isSwiping = true;
+                        element.classList.add('swiping');
+                    } else {
+                        element.classList.remove('swiping');
+                    }
+                }
+            }, { passive: false });
+
+            element.addEventListener('touchend', (e) => {
+                if (!currentSwipeElement || !isSwiping) {
+                    resetSwipe();
+                    return;
+                }
+
+                const touch = e.changedTouches[0];
+                if (touch) {
+                    const deltaX = touch.clientX - touchStartX;
+                    if (deltaX > 50) {
+                        editMessage(messageId, text, timestampStr);
+                    }
+                }
+                resetSwipe();
+            });
+
+            let pressTimer;
+            element.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                pressTimer = setTimeout(() => {
+                    if (timestampStr) {
+                        const messageTime = new Date(timestampStr).getTime();
+                        const now = Date.now();
+                        const diffMinutes = (now - messageTime) / (1000 * 60);
+                        if (diffMinutes > 20) {
+                            showError("لا يمكن تعديل الرسالة بعد مرور 20 دقيقة");
+                            return;
+                        }
+                    }
+                    if (confirm('تعديل الرسالة؟')) {
+                        editMessage(messageId, text, timestampStr);
+                    }
+                }, 500);
+            });
+
+            element.addEventListener('mouseup', () => clearTimeout(pressTimer));
+            element.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+        }
+
+        function resetSwipe() {
+            if (currentSwipeElement) {
+                currentSwipeElement.classList.remove('swiping');
+            }
+            touchStartX = 0;
+            touchStartY = 0;
+            currentSwipeElement = null;
+            currentMessageId = null;
+            isSwiping = false;
+        }
+
+        function updateSwipeHint() {
+            const oldHint = document.querySelector('.swipe-hint');
+            if (oldHint) oldHint.remove();
+
+            const lastGuestMessage = document.querySelector('.message-wrapper.guest:last-child');
+            if (lastGuestMessage) {
+                const hint = document.createElement('div');
+                hint.className = 'swipe-hint';
+                hint.textContent = 'لتعديل الرسالة إسحب لليمين';
+                lastGuestMessage.insertAdjacentElement('afterend', hint);
+            }
+        }
+
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function loadMessages() {
+            if (!guestId) return;
+            if (unsubscribe) unsubscribe();
+
+            if (!db) return;
+
+            unsubscribe = db.collection(PATH + "/conversations").doc(guestId)
+                .collection("messages")
+                .orderBy("createdAt", "asc")
+                .onSnapshot(snapshot => {
+                    messagesContainer.innerHTML = '';
+
+                    snapshot.forEach(doc => {
+                        const msg = doc.data();
+                        msg.id = doc.id;
+                        displayMessage(msg);
+                        if (msg.from === 'admin' && !welcomeSent) welcomeSent = true;
+                    });
+
+                    updateSwipeHint();
+                    scrollToBottom();
+
+                    // Mark admin messages as read when they are displayed
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === 'added') {
+                            const msg = change.doc.data();
+                            if (msg.from === 'admin' && !msg.read) {
+                                change.doc.ref.update({ read: true });
+                                // تحديث unreadCount في وثيقة المحادثة
+                                db.collection(PATH + "/conversations").doc(guestId).update({
+                                    unreadCount: firebase.firestore.FieldValue.increment(-1)
+                                }).catch(() => {});
+                            }
+                        }
+                    });
+
+                }, error => {
+                    console.error("خطأ في الاستماع للرسائل:", error);
+                    showError("فشل تحميل الرسائل، حاول تحديث الصفحة");
+                });
+        }
+
+        function displayMessage(msg) {
+            const sender = msg.from || 'system';
+            const text = msg.text || '';
+            const timeStr = formatTime(msg.createdAt);
+            const messageId = msg.id;
+            const type = msg.type || 'text';
+            const imageUrl = msg.imageUrl || '';
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message-wrapper ' + (sender === 'guest' ? 'guest' : 'admin');
+            if (messageId) wrapper.setAttribute('data-message-id', messageId);
+
+            let timestampForEdit = null;
+            if (msg.createdAt) {
+                if (msg.createdAt.toDate) {
+                    timestampForEdit = msg.createdAt.toDate().toISOString();
+                } else if (typeof msg.createdAt === 'string') {
+                    timestampForEdit = msg.createdAt;
+                }
+                if (timestampForEdit) {
+                    wrapper.setAttribute('data-message-time', timestampForEdit);
+                }
+            }
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+
+            // محتوى الرسالة
+            if (type === 'image' && imageUrl) {
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.className = 'message-image';
+                img.onclick = () => {
+                    document.getElementById('modalImage').src = imageUrl;
+                    document.getElementById('imageModal').style.display = 'block';
+                };
+                bubble.appendChild(img);
+            } else {
+                const textDiv = document.createElement('div');
+                textDiv.className = 'message-text';
+                textDiv.innerText = text;
+                bubble.appendChild(textDiv);
+            }
+
+            // تذييل الرسالة مع الوقت وحالة القراءة
+            const footer = document.createElement('div');
+            footer.className = 'message-time';
+            footer.style.display = 'flex';
+            footer.style.justifyContent = 'space-between';
+            footer.style.alignItems = 'center';
+
+            const timeSpan = document.createElement('span');
+            timeSpan.innerText = timeStr;
+
+            const statusSpan = document.createElement('span');
+            statusSpan.className = 'read-status';
+            if (sender === 'guest') {
+                // رسائل الزبون: نعرض حالتها (مرسلة، وصلت، قرئت)
+                if (msg.readByAdmin) {
+                    statusSpan.classList.add('read');
+                    statusSpan.innerText = '✓✓'; // أزرق (قرئت)
+                } else if (msg.delivered) {
+                    statusSpan.classList.add('delivered');
+                    statusSpan.innerText = '✓✓'; // أخضر (وصلت)
+                } else {
+                    statusSpan.classList.add('sent');
+                    statusSpan.innerText = '✓'; // رمادي (مرسلة)
+                }
+            } else if (sender === 'admin') {
+                // رسائل الإدارة: نعرض إذا قرأها الزبون
+                if (msg.read) {
+                    statusSpan.classList.add('read');
+                    statusSpan.innerText = '✓✓';
+                } else {
+                    statusSpan.classList.add('sent');
+                    statusSpan.innerText = '✓';
+                }
+            }
+
+            footer.appendChild(timeSpan);
+            footer.appendChild(statusSpan);
+            bubble.appendChild(footer);
+
+            wrapper.appendChild(bubble);
+            messagesContainer.appendChild(wrapper);
+
+            if (sender === 'guest' && messageId) {
+                setupSwipeToEdit(wrapper, messageId, sender, text, timestampForEdit);
+            }
+        }
+
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text && !imageUpload.files.length) {
+                showError('✖ اكتب شيئاً أو اختر صورة للإرسال', true);
+                return;
+            }
+            if (!guestId) {
+                showError('حدث خطأ، يرجى إعادة تحميل الصفحة');
+                return;
+            }
+
+            setInputEnabled(false);
+
+            if (imageUpload.files.length > 0) {
+                // إرسال صورة
+                const file = imageUpload.files[0];
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imageData = e.target.result; // Base64
+                    db.collection(PATH + "/conversations").doc(guestId)
+                        .collection("messages")
+                        .add({
+                            type: 'image',
+                            imageUrl: imageData,
+                            from: "guest",
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            delivered: false,
+                            readByAdmin: false
+                        })
+                        .then(() => {
+                            imageUpload.value = '';
+                            setInputEnabled(true);
+                            messageInput.focus();
+                        })
+                        .catch((error) => {
+                            console.error("فشل إرسال الصورة:", error);
+                            showError('فشل إرسال الصورة');
+                            setInputEnabled(true);
+                        });
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // إرسال نص
+                db.collection(PATH + "/conversations").doc(guestId)
+                    .collection("messages")
+                    .add({
+                        text: text,
+                        type: 'text',
+                        from: "guest",
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        delivered: false,
+                        readByAdmin: false
+                    })
+                    .then(() => {
+                        messageInput.value = '';
+                        db.collection(PATH + "/conversations").doc(guestId).update({
+                            lastText: text,
+                            lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            lastFrom: "guest"
+                        });
+                        setInputEnabled(true);
+                        messageInput.focus();
+
+                        if (!welcomeSent) sendWelcomeMessage();
+                    })
+                    .catch((error) => {
+                        console.error("فشل إرسال الرسالة:", error);
+                        showError('فشل إرسال الرسالة، حاول مرة أخرى');
+                        setInputEnabled(true);
+                    });
+            }
+        }
+
+        function setupEnterKey() {
+            messageInput.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            };
+        }
+
+        // تحديث delivered و readByAdmin عند دخول الزبون
+        function updateMessageStatus() {
+            if (!guestId) return;
+            // تحديث delivered للرسائل المرسلة
+            const messagesRef = db.collection(PATH + "/conversations").doc(guestId).collection("messages");
+            messagesRef.where("from", "==", "guest").where("delivered", "==", false).get().then(snapshot => {
+                snapshot.forEach(doc => {
+                    doc.ref.update({ delivered: true });
+                });
+            });
+            // تحديث unreadCount في المحادثة (تصفير)
+            db.collection(PATH + "/conversations").doc(guestId).update({
+                unreadCount: 0
+            }).catch(() => {});
+        }
+
+        window.onload = () => {
+            const savedName = localStorage.getItem('guest_name');
+            const savedId = localStorage.getItem('guest_id');
+
+            if (savedName && savedId) {
+                startChat(savedName);
+            } else {
+                localStorage.removeItem('guest_id');
+                localStorage.removeItem('guest_name');
+                document.getElementById('guest-name').value = '';
+            }
+
+            setupEnterKey();
+
+            imageUpload.onchange = () => {
+                if (imageUpload.files.length > 0) {
+                    sendMessage();
+                }
+            };
+        };
+
+        window.onbeforeunload = () => {
+            cleanupAdminStatus();
+        };
+
+        // تحديث delivered عند بدء المحادثة
+        setInterval(() => {
+            if (guestId) updateMessageStatus();
+        }, 5000);
+    </script>
+</body>
+</html>
